@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Card } from "@/shared/components";
 
 interface DiversityProviderStat {
@@ -15,6 +16,7 @@ interface DiversityReport {
 }
 
 export default function DiversityScoreCard() {
+  const t = useTranslations("analytics");
   const [data, setData] = useState<DiversityReport | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -60,16 +62,16 @@ export default function DiversityScoreCard() {
 
   let riskColor = "text-green-500";
   let gaugeColor = "bg-green-500";
-  let riskLabel = "Healthy Distribution";
+  let riskLabel = t("diversityHealthyDistribution");
 
   if (scorePercentage < 40) {
     riskColor = "text-red-500";
     gaugeColor = "bg-red-500";
-    riskLabel = "High Vendor Lock-in Risk";
+    riskLabel = t("diversityHighLockInRisk");
   } else if (scorePercentage < 70) {
     riskColor = "text-amber-500";
     gaugeColor = "bg-amber-500";
-    riskLabel = "Moderate Distribution";
+    riskLabel = t("diversityModerateDistribution");
   }
 
   const providerEntries = Object.entries(data.providers || {})
@@ -82,9 +84,9 @@ export default function DiversityScoreCard() {
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-[20px] text-primary">pie_chart</span>
-          <h3 className="font-semibold text-text-main">Provider Diversity</h3>
+          <h3 className="font-semibold text-text-main">{t("diversityTitle")}</h3>
           <span className="text-xs text-text-muted hidden sm:inline">
-            — Provider concentration snapshot for the recent traffic window.
+            — {t("diversitySubtitle")}
           </span>
         </div>
         <div className="flex items-center gap-3">

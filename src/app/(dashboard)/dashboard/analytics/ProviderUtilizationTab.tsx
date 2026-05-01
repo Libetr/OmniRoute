@@ -19,6 +19,7 @@ import type {
   ProviderUtilizationResponse,
   UtilizationTimeRange,
 } from "@/shared/types/utilization";
+import { useTranslations } from "next-intl";
 
 const RANGE_LABELS: Record<UtilizationTimeRange, string> = {
   "1h": "Last hour",
@@ -89,6 +90,7 @@ function getLatestPoints(points: ProviderUtilizationPoint[]) {
 }
 
 export default function ProviderUtilizationTab() {
+  const t = useTranslations("analytics");
   const [range, setRange] = useState<UtilizationTimeRange>("24h");
   const [aggregateBy, setAggregateBy] = useState<"provider" | "connection">("provider");
   const [data, setData] = useState<ProviderUtilizationResponse | null>(null);
@@ -191,7 +193,7 @@ export default function ProviderUtilizationTab() {
   return (
     <div className="flex flex-col gap-6">
       <Card
-        title="Provider utilization"
+        title={t("utilizationTitle")}
         subtitle={RANGE_LABELS[range]}
         icon="monitoring"
         action={
@@ -206,7 +208,7 @@ export default function ProviderUtilizationTab() {
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">dns</span>
-                Global View
+                {t("utilizationGlobalView")}
               </button>
               <button
                 onClick={() => setAggregateBy("connection")}
@@ -217,7 +219,7 @@ export default function ProviderUtilizationTab() {
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">account_tree</span>
-                Account Split
+                {t("utilizationAccountSplit")}
               </button>
             </div>
             <TimeRangeSelector value={range} onChange={setRange} />
@@ -230,13 +232,13 @@ export default function ProviderUtilizationTab() {
             <span className="material-symbols-outlined mr-2 animate-spin text-[18px]">
               progress_activity
             </span>
-            Loading utilization data…
+            {t("utilizationLoading")}
           </div>
         ) : error ? (
           <div className="flex min-h-80 flex-col items-center justify-center gap-4 text-center">
             <span className="material-symbols-outlined text-[32px] text-error">error</span>
             <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-text-main">Failed to load utilization data</p>
+              <p className="text-sm font-medium text-text-main">{t("utilizationLoadFailed")}</p>
               <p className="text-sm text-text-muted">{error}</p>
             </div>
             <button
@@ -250,12 +252,12 @@ export default function ProviderUtilizationTab() {
                   <span className="material-symbols-outlined animate-spin text-[18px]">
                     progress_activity
                   </span>
-                  Retrying…
+                  {t("retrying")}
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[18px]">refresh</span>
-                  Retry
+                  {t("retry")}
                 </>
               )}
             </button>
@@ -266,35 +268,29 @@ export default function ProviderUtilizationTab() {
               timeline
             </span>
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-text-main">No utilization data available</p>
-              <p className="max-w-md text-sm text-text-muted">
-                Provider quota snapshots will appear here after utilization data is collected.
-              </p>
+              <p className="text-sm font-medium text-text-main">{t("utilizationEmptyTitle")}</p>
+              <p className="max-w-md text-sm text-text-muted">{t("utilizationEmptyDescription")}</p>
             </div>
             <div className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]">
-              <p className="text-xs font-medium text-text-main">Getting started</p>
+              <p className="text-xs font-medium text-text-main">{t("gettingStarted")}</p>
               <ul className="mt-2 text-left text-xs text-text-muted">
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     check_circle
                   </span>
-                  <span>
-                    Connect providers via OAuth or API keys in <strong>Providers</strong>
-                  </span>
+                  <span>{t("utilizationGettingStartedProviders")}</span>
                 </li>
                 <li className="mt-1 flex items-start gap-2">
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     check_circle
                   </span>
-                  <span>
-                    Enable quota tracking by using the provider in a combo or direct request
-                  </span>
+                  <span>{t("utilizationGettingStartedTracking")}</span>
                 </li>
                 <li className="mt-1 flex items-start gap-2">
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     check_circle
                   </span>
-                  <span>Data will appear automatically as quota snapshots are collected</span>
+                  <span>{t("utilizationGettingStartedAuto")}</span>
                 </li>
               </ul>
             </div>
@@ -369,7 +365,9 @@ export default function ProviderUtilizationTab() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-text-main">{point.provider}</p>
-                          <p className="text-xs text-text-muted">Latest quota snapshot</p>
+                          <p className="text-xs text-text-muted">
+                            {t("utilizationLatestQuotaSnapshot")}
+                          </p>
                         </div>
                       </div>
                       <span
@@ -381,7 +379,11 @@ export default function ProviderUtilizationTab() {
                               : "bg-success/10 text-success"
                         }`}
                       >
-                        {point.isExhausted ? "Exhausted" : isLow ? "Low" : "Healthy"}
+                        {point.isExhausted
+                          ? t("statusExhausted")
+                          : isLow
+                            ? t("statusLow")
+                            : t("statusHealthy")}
                       </span>
                     </div>
 
@@ -390,7 +392,9 @@ export default function ProviderUtilizationTab() {
                         <p className="text-3xl font-bold text-text-main">
                           {point.remainingPct.toFixed(point.remainingPct < 10 ? 1 : 0)}%
                         </p>
-                        <p className="mt-1 text-xs text-text-muted">Remaining capacity</p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          {t("utilizationRemainingCapacity")}
+                        </p>
                       </div>
                       <div className="text-right text-xs text-text-muted">
                         <p>{formatTooltipTimestamp(point.timestamp, range)}</p>
@@ -409,7 +413,7 @@ export default function ProviderUtilizationTab() {
                       </div>
                       <div className="flex items-center justify-between text-xs text-text-muted">
                         <span>0%</span>
-                        <span>Remaining quota</span>
+                        <span>{t("utilizationRemainingQuota")}</span>
                         <span>100%</span>
                       </div>
                     </div>

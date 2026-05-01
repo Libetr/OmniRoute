@@ -8,6 +8,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 
 interface SearchStats {
   total: number;
@@ -76,6 +77,7 @@ function ProviderBar({
 }
 
 export default function SearchAnalyticsTab() {
+  const t = useTranslations("analytics");
   const [stats, setStats] = useState<SearchStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +99,7 @@ export default function SearchAnalyticsTab() {
     return (
       <div className="flex items-center justify-center py-16 text-text-muted">
         <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
-        Loading search analytics…
+        {t("searchLoading")}
       </div>
     );
   }
@@ -106,10 +108,8 @@ export default function SearchAnalyticsTab() {
     return (
       <div className="card p-6 text-center text-text-muted">
         <span className="material-symbols-outlined text-[32px] mb-2 block">search_off</span>
-        {error || "No search data available yet."}
-        <p className="text-xs mt-2">
-          Search requests will appear here after the first search via /v1/search.
-        </p>
+        {error || t("searchNoDataYet")}
+        <p className="text-xs mt-2">{t("searchFirstRequestHint")}</p>
       </div>
     );
   }
@@ -122,27 +122,29 @@ export default function SearchAnalyticsTab() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           icon="manage_search"
-          label="Total Searches"
+          label={t("searchTotalSearches")}
           value={stats.total.toLocaleString()}
-          sub={`${stats.today} today`}
+          sub={t("searchTodayCount", { count: stats.today })}
         />
         <StatCard
           icon="cached"
-          label="Cache Hit Rate"
+          label={t("searchCacheHitRate")}
           value={`${stats.cacheHitRate}%`}
-          sub={`${stats.cached} cached requests`}
+          sub={t("searchCachedRequests", { count: stats.cached })}
         />
         <StatCard
           icon="attach_money"
-          label="Total Cost"
+          label={t("searchTotalCost")}
           value={`$${stats.totalCostUsd.toFixed(4)}`}
-          sub="search API costs"
+          sub={t("searchApiCosts")}
         />
         <StatCard
           icon="timer"
-          label="Avg Response"
+          label={t("searchAvgResponse")}
           value={`${stats.avgDurationMs}ms`}
-          sub={stats.errors > 0 ? `${stats.errors} errors` : "No errors"}
+          sub={
+            stats.errors > 0 ? t("searchErrorsCount", { count: stats.errors }) : t("searchNoErrors")
+          }
         />
       </div>
 
@@ -151,7 +153,7 @@ export default function SearchAnalyticsTab() {
         <div className="card p-5">
           <h3 className="font-semibold text-text mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-primary text-[20px]">hub</span>
-            Provider Breakdown
+            {t("searchProviderBreakdown")}
           </h3>
           <div className="flex flex-col gap-4">
             {providers.map(([prov, data]) => (
@@ -173,11 +175,8 @@ export default function SearchAnalyticsTab() {
           <span className="material-symbols-outlined text-[48px] mb-3 block text-primary opacity-50">
             travel_explore
           </span>
-          <p className="font-medium text-text">No searches yet</p>
-          <p className="text-sm mt-1">
-            Use <code className="bg-bg-muted px-1 rounded">POST /v1/search</code> to start routing
-            web searches.
-          </p>
+          <p className="font-medium text-text">{t("searchEmptyTitle")}</p>
+          <p className="text-sm mt-1">{t("searchEmptyDescription")}</p>
         </div>
       )}
 
@@ -186,10 +185,7 @@ export default function SearchAnalyticsTab() {
         <span className="material-symbols-outlined text-[16px] text-green-500 mt-0.5">
           check_circle
         </span>
-        <span>
-          <strong>Free tier available:</strong> Serper (2,500/mo), Brave (2,000/mo), Exa (1,000/mo),
-          Tavily (1,000/mo) — total 6,500+ free searches/month with automatic failover.
-        </span>
+        <span>{t("searchFreeTierNote")}</span>
       </div>
     </div>
   );

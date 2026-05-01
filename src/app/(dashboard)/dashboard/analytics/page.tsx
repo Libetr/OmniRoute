@@ -16,7 +16,7 @@ export default function AnalyticsPage() {
   const tabDescriptions: Record<string, string> = {
     overview: t("overviewDescription"),
     evals: t("evalsDescription"),
-    search: "Search request analytics — provider breakdown, cache hit rate, and cost tracking.",
+    search: t("searchDescription"),
     utilization: t("utilizationDescription"),
     comboHealth: t("comboHealthDescription"),
   };
@@ -36,7 +36,7 @@ export default function AnalyticsPage() {
         options={[
           { value: "overview", label: t("overview") },
           { value: "evals", label: t("evals") },
-          { value: "search", label: "Search" },
+          { value: "search", label: t("search") },
           { value: "utilization", label: t("utilization") },
           { value: "comboHealth", label: t("comboHealth") },
         ]}

@@ -11,6 +11,7 @@ import type {
   UtilizationTimeRange,
 } from "@/shared/types/utilization";
 import { cn } from "@/shared/utils/cn";
+import { useTranslations } from "next-intl";
 
 function formatPercent(value: number, digits = 0) {
   return `${value.toFixed(digits)}%`;
@@ -91,7 +92,13 @@ function DistributionBar({ label, value, meta }: { label: string; value: number;
   );
 }
 
-function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
+function ComboHealthCard({
+  combo,
+  t,
+}: {
+  combo: ComboHealthMetrics;
+  t: ReturnType<typeof useTranslations<"analytics">>;
+}) {
   const sortedDistribution = useMemo(
     () =>
       [...combo.usageSkew.modelDistribution].sort(
@@ -361,6 +368,7 @@ function ComboHealthSkeleton() {
 }
 
 export default function ComboHealthTab() {
+  const t = useTranslations("analytics");
   const [range, setRange] = useState<UtilizationTimeRange>("24h");
   const [data, setData] = useState<ComboHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -421,10 +429,8 @@ export default function ComboHealthTab() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 rounded-xl border border-black/5 bg-surface p-5 shadow-sm dark:border-white/5 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-text-main">Combo health</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Monitor quota pressure, skewed model usage, and delivery performance by combo.
-          </p>
+          <h2 className="text-lg font-semibold text-text-main">{t("comboHealthTitle")}</h2>
+          <p className="mt-1 text-sm text-text-muted">{t("comboHealthDescription")}</p>
         </div>
         <TimeRangeSelector value={range} onChange={setRange} />
       </div>
@@ -436,7 +442,7 @@ export default function ComboHealthTab() {
           <div className="flex flex-col items-center justify-center gap-4 text-center">
             <span className="material-symbols-outlined text-[40px] text-error">sync_problem</span>
             <div className="flex flex-col gap-1">
-              <div className="font-medium text-text-main">Unable to load combo health</div>
+              <div className="font-medium text-text-main">{t("comboHealthLoadFailed")}</div>
               <div className="text-sm text-text-muted">{error}</div>
             </div>
             <button
@@ -450,12 +456,12 @@ export default function ComboHealthTab() {
                   <span className="material-symbols-outlined animate-spin text-[18px]">
                     progress_activity
                   </span>
-                  Retrying…
+                  {t("retrying")}
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[18px]">refresh</span>
-                  Retry
+                  {t("retry")}
                 </>
               )}
             </button>
@@ -469,35 +475,30 @@ export default function ComboHealthTab() {
             <span className="material-symbols-outlined text-[40px] text-text-muted/70">
               monitor_heart
             </span>
-            <div className="text-base font-medium text-text-main">
-              No combo health data available
-            </div>
+            <div className="text-base font-medium text-text-main">{t("comboHealthEmptyTitle")}</div>
             <div className="max-w-md text-sm text-text-muted">
-              Combo quota snapshots and routed requests will appear here after traffic starts
-              flowing.
+              {t("comboHealthEmptyDescription")}
             </div>
             <div className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]">
-              <p className="text-xs font-medium text-text-main">Getting started</p>
+              <p className="text-xs font-medium text-text-main">{t("gettingStarted")}</p>
               <ul className="mt-2 text-left text-xs text-text-muted">
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     check_circle
                   </span>
-                  <span>
-                    Create combos in <strong>Combos</strong> with multiple providers
-                  </span>
+                  <span>{t("comboHealthGettingStartedCombos")}</span>
                 </li>
                 <li className="mt-1 flex items-start gap-2">
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     check_circle
                   </span>
-                  <span>Send requests to combo endpoints to generate traffic data</span>
+                  <span>{t("comboHealthGettingStartedTraffic")}</span>
                 </li>
                 <li className="mt-1 flex items-start gap-2">
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     check_circle
                   </span>
-                  <span>Health metrics will appear automatically as requests are routed</span>
+                  <span>{t("comboHealthGettingStartedAuto")}</span>
                 </li>
               </ul>
             </div>
@@ -512,7 +513,7 @@ export default function ComboHealthTab() {
               size="sm"
               className={cn("text-primary", "[&_.material-symbols-outlined]:text-[16px]")}
             />
-            Tracking {combos.length} combos for {range}
+            {t("comboHealthTracking", { count: combos.length, range })}
           </div>
           {combos.map((combo) => (
             <ComboHealthCard key={combo.comboId} combo={combo} />

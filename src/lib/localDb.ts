@@ -79,6 +79,8 @@ export {
   deleteCombo,
 } from "./db/combos";
 
+export * from "./db/compressionCacheStats";
+
 export {
   // API Keys
   getApiKeys,
@@ -149,6 +151,7 @@ export {
   getProxyById,
   createProxy,
   updateProxy,
+  upsertProxy,
   deleteProxyById,
   getProxyAssignments,
   getProxyWhereUsed,
@@ -321,6 +324,16 @@ export {
   getAllPersistedCreditBalances,
   persistCreditBalance,
 } from "./db/creditBalance";
+
+export {
+  insertCompressionAnalyticsRow,
+  getCompressionAnalyticsSummary,
+} from "./db/compressionAnalytics";
+
+export type {
+  CompressionAnalyticsRow,
+  CompressionAnalyticsSummary,
+} from "./db/compressionAnalytics";
 
 export {
   // Reasoning Replay Cache (#1628)

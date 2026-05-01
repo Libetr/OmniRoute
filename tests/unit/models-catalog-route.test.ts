@@ -354,21 +354,21 @@ test("v1 models catalog includes synced Gemini models and duplicates audio model
       {
         id: "gemini-audio-live",
         name: "Gemini Audio Live",
-        source: "api-sync",
+        source: "imported",
         supportedEndpoints: ["audio"],
         inputTokenLimit: 4096,
       },
       {
         id: "text-embedding-004",
         name: "Text Embedding 004",
-        source: "api-sync",
+        source: "imported",
         supportedEndpoints: ["embeddings"],
         inputTokenLimit: 2048,
       },
       {
         id: "gemini-hidden",
         name: "Gemini Hidden",
-        source: "api-sync",
+        source: "imported",
         supportedEndpoints: ["chat"],
       },
     ]
@@ -402,7 +402,7 @@ test("v1 models catalog keeps Gemini chat models untyped when synced endpoints a
     {
       id: "gemini-2.5-pro-live",
       name: "Gemini 2.5 Pro Live",
-      source: "api-sync",
+      source: "imported",
       inputTokenLimit: 8192,
     },
   ]);
@@ -430,7 +430,7 @@ test("v1 models catalog includes synced non-Gemini provider models from discover
     {
       id: "glm-5.1",
       name: "GLM 5.1",
-      source: "api-sync",
+      source: "imported",
       supportedEndpoints: ["chat"],
       inputTokenLimit: 262144,
     },
@@ -464,7 +464,7 @@ test("v1 models catalog includes media, moderation, rerank, video, and music mod
   const byId = new Map(body.data.map((item) => [item.id, item]));
 
   assert.equal(response.status, 200);
-  assert.equal((byId.get("openai/gpt-image-1") as any).type, "image");
+  assert.equal((byId.get("openai/gpt-image-2") as any).type, "image");
   assert.equal((byId.get("openai/whisper-1") as any).type, "audio");
   assert.equal((byId.get("openai/whisper-1") as any).subtype, "transcription");
   assert.equal((byId.get("openai/omni-moderation-latest") as any).type, "moderation");
@@ -484,10 +484,10 @@ test("v1 models catalog exposes image model input and output modalities for adva
   const byId = new Map(body.data.map((item) => [item.id, item]));
 
   assert.equal(response.status, 200);
-  assert.deepEqual((byId as any).get("flux-redux")?.input_modalities, ["text", "image"]);
-  (assert as any).deepEqual((byId.get("flux-redux") as any).output_modalities, ["image"]);
-  (assert as any).equal((byId.get("flux-redux") as any).type, "image");
-  assert.ok((byId.get("flux-redux") as any).supported_sizes?.includes("1024x1024"));
+  assert.deepEqual((byId as any).get("flux-2-dev")?.input_modalities, ["text", "image"]);
+  (assert as any).deepEqual((byId.get("flux-2-dev") as any).output_modalities, ["image"]);
+  (assert as any).equal((byId.get("flux-2-dev") as any).type, "image");
+  assert.ok((byId.get("flux-2-dev") as any).supported_sizes?.includes("1024x1024"));
   (assert as any).deepEqual((byId.get("topaz/topaz-enhance") as any).input_modalities, ["image"]);
   assert.deepEqual((byId.get("topaz/topaz-enhance") as any).output_modalities, ["image"]);
 });

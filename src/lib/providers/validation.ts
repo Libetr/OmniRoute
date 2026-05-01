@@ -24,7 +24,7 @@ import {
   safeOutboundFetch,
 } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
-import { normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
+import { extractCookieValue, normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
 import { getGigachatAccessToken } from "@omniroute/open-sse/services/gigachatAuth.ts";
 import { validateQoderCliPat } from "@omniroute/open-sse/services/qoderCli.ts";
 import {
@@ -68,6 +68,7 @@ import {
 } from "@omniroute/open-sse/config/runway.ts";
 import { PETALS_DEFAULT_MODEL, normalizePetalsBaseUrl } from "@omniroute/open-sse/config/petals.ts";
 import { signAwsRequest } from "@omniroute/open-sse/utils/awsSigV4.ts";
+import { validateImageProviderApiKey } from "@/lib/providers/imageValidation";
 
 const OPENAI_LIKE_FORMATS = new Set(["openai", "openai-responses"]);
 const GEMINI_LIKE_FORMATS = new Set(["gemini", "gemini-cli"]);
@@ -672,34 +673,7 @@ async function validateAssemblyAIProvider({ apiKey, providerSpecificData = {} }:
 }
 
 async function validateNanoBananaProvider({ apiKey, providerSpecificData = {} }: any) {
-  try {
-    // NanoBanana doesn't expose a lightweight validation endpoint,
-    // so we send a minimal generate request that will succeed or fail on auth.
-    const response = await validationWrite(
-      "https://api.nanobananaapi.ai/api/v1/nanobanana/generate",
-      {
-        method: "POST",
-        headers: applyCustomUserAgent(
-          {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          providerSpecificData
-        ),
-        body: JSON.stringify({
-          prompt: "test",
-          model: "nanobanana-flash",
-        }),
-      }
-    );
-    // Auth errors → 401/403; anything else (even 400 bad request) means auth passed
-    if (response.status === 401 || response.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
-    return { valid: true, error: null };
-  } catch (error: any) {
-    return toValidationErrorResult(error);
-  }
+  return validateImageProviderApiKey({ provider: "nanobanana", apiKey, providerSpecificData });
 }
 
 async function validateElevenLabsProvider({ apiKey, providerSpecificData = {} }: any) {
@@ -2335,8 +2309,13 @@ function buildMetaAiValidationBody() {
 
 async function validateGrokWebProvider({ apiKey, providerSpecificData = {} }: any) {
   try {
-    let token = apiKey;
-    if (token.startsWith("sso=")) token = token.slice(4);
+    const token = extractCookieValue(apiKey, "sso");
+    if (!token) {
+      return {
+        valid: false,
+        error: "Missing sso cookie — paste the value (or the full grok.com cookie line)",
+      };
+    }
 
     // Generate the same Cloudflare-bypass headers the GrokWebExecutor uses.
     const randomHex = (n: number) => {
@@ -2379,7 +2358,7 @@ async function validateGrokWebProvider({ apiKey, providerSpecificData = {} }: an
       ),
       body: JSON.stringify({
         temporary: true,
-        modeId: "auto",
+        modeId: "fast",
         message: "test",
         fileAttachments: [],
         imageAttachments: [],
@@ -2411,10 +2390,28 @@ async function validateGrokWebProvider({ apiKey, providerSpecificData = {} }: an
       errorDetail = (await response.text()).slice(0, 240);
     } catch {}
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       return {
         valid: false,
         error: "Invalid SSO cookie — re-paste from grok.com DevTools → Cookies → sso",
+      };
+    }
+
+    if (response.status === 403) {
+      // Grok uses 403 for auth failures, entitlement issues, geo blocks, and
+      // resource errors. Default-deny: only the auth-shaped 403 gets the
+      // re-paste hint; anything else surfaces the upstream body so the user
+      // (or maintainer, if upstream renames the probe model) sees the real
+      // cause instead of a misleading "valid" verdict.
+      if (/invalid-credentials|unauthenticated|unauthorized/i.test(errorDetail)) {
+        return {
+          valid: false,
+          error: "Invalid SSO cookie — re-paste from grok.com DevTools → Cookies → sso",
+        };
+      }
+      return {
+        valid: false,
+        error: `Grok rejected validation (403)${errorDetail ? `: ${errorDetail.slice(0, 160)}` : ""}`,
       };
     }
 
@@ -2430,6 +2427,114 @@ async function validateGrokWebProvider({ apiKey, providerSpecificData = {} }: an
       valid: false,
       error: `Grok validation failed (${response.status})${errorDetail ? `: ${errorDetail}` : ""}`,
     };
+  } catch (error: any) {
+    return toValidationErrorResult(error);
+  }
+}
+
+async function validateChatGptWebProvider({ apiKey, providerSpecificData = {} }: any) {
+  try {
+    // Accept bare value, unchunked cookie, chunked (.0/.1) cookies, or full
+    // "Cookie: ..." DevTools line. Pass through verbatim once recognised.
+    let cookieHeader = String(apiKey || "").trim();
+    if (/^cookie\s*:\s*/i.test(cookieHeader)) {
+      cookieHeader = cookieHeader.replace(/^cookie\s*:\s*/i, "");
+    }
+    if (!/__Secure-next-auth\.session-token(?:\.\d+)?\s*=/.test(cookieHeader)) {
+      cookieHeader = `__Secure-next-auth.session-token=${cookieHeader}`;
+    }
+
+    // Use the TLS-impersonating client — Cloudflare on chatgpt.com pins
+    // cf_clearance to JA3/JA4 + HTTP/2 SETTINGS, so plain Node fetch always
+    // gets cf-mitigated: challenge regardless of cookies.
+    const { tlsFetchChatGpt, TlsClientUnavailableError } =
+      await import("@omniroute/open-sse/services/chatgptTlsClient.ts");
+
+    let response;
+    try {
+      response = await tlsFetchChatGpt("https://chatgpt.com/api/auth/session", {
+        method: "GET",
+        headers: applyCustomUserAgent(
+          {
+            Accept: "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+            Cookie: cookieHeader,
+            Origin: "https://chatgpt.com",
+            Pragma: "no-cache",
+            Referer: "https://chatgpt.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0",
+          },
+          providerSpecificData
+        ),
+        timeoutMs: 30_000,
+      });
+    } catch (err: any) {
+      if (err instanceof TlsClientUnavailableError) {
+        return {
+          valid: false,
+          error: `${err.message} (chatgpt-web requires this — without it, Cloudflare blocks every request)`,
+        };
+      }
+      throw err;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const cfRay = response.headers.get("cf-ray");
+    const cfMitigated = response.headers.get("cf-mitigated");
+
+    if (response.status === 401 || response.status === 403) {
+      const bodyText = response.text || "";
+      if (cfMitigated || /just a moment|cloudflare|cf-chl|attention required/i.test(bodyText)) {
+        return {
+          valid: false,
+          error:
+            "Cloudflare blocked the validator — open chatgpt.com in your browser, then copy the FULL Cookie line from DevTools (Network → request → Cookie) including cf_clearance, __cf_bm, _cfuvid, and the session-token chunks.",
+        };
+      }
+      return {
+        valid: false,
+        error:
+          "Invalid ChatGPT session cookie — re-paste __Secure-next-auth.session-token from chatgpt.com DevTools → Cookies",
+      };
+    }
+
+    if (response.status >= 500) {
+      return { valid: false, error: `ChatGPT unavailable (${response.status})` };
+    }
+
+    if (response.status >= 400) {
+      return { valid: false, error: `Validation failed: ${response.status}` };
+    }
+
+    if (!contentType.includes("json")) {
+      return {
+        valid: false,
+        error: `ChatGPT returned non-JSON (${contentType || "no content-type"}${cfRay ? `, cf-ray=${cfRay}` : ""}) — paste the FULL Cookie line including cf_clearance, __cf_bm, _cfuvid alongside the session-token chunks.`,
+      };
+    }
+
+    let data: any = {};
+    try {
+      data = JSON.parse(response.text || "{}");
+    } catch {
+      return {
+        valid: false,
+        error:
+          "ChatGPT session response was not JSON — paste the FULL Cookie line including cf_clearance and __cf_bm.",
+      };
+    }
+    if (!data?.accessToken) {
+      return {
+        valid: false,
+        error: "ChatGPT session expired — log into chatgpt.com and copy a fresh cookie",
+      };
+    }
+    return { valid: true, error: null };
   } catch (error: any) {
     return toValidationErrorResult(error);
   }
@@ -2517,7 +2622,7 @@ async function validatePerplexityWebProvider({ apiKey, providerSpecificData = {}
 
 async function validateBlackboxWebProvider({ apiKey, providerSpecificData = {} }: any) {
   try {
-    const cookieHeader = normalizeSessionCookieHeader(apiKey, "__Secure-authjs.session-token");
+    const cookieHeader = normalizeSessionCookieHeader(apiKey, "next-auth.session-token");
     const sessionHeaders = applyCustomUserAgent(
       {
         Accept: "application/json",
@@ -2722,6 +2827,16 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     deepgram: validateDeepgramProvider,
     assemblyai: validateAssemblyAIProvider,
     nanobanana: validateNanoBananaProvider,
+    "fal-ai": ({ apiKey, providerSpecificData }: any) =>
+      validateImageProviderApiKey({ provider: "fal-ai", apiKey, providerSpecificData }),
+    "stability-ai": ({ apiKey, providerSpecificData }: any) =>
+      validateImageProviderApiKey({ provider: "stability-ai", apiKey, providerSpecificData }),
+    "black-forest-labs": ({ apiKey, providerSpecificData }: any) =>
+      validateImageProviderApiKey({ provider: "black-forest-labs", apiKey, providerSpecificData }),
+    recraft: ({ apiKey, providerSpecificData }: any) =>
+      validateImageProviderApiKey({ provider: "recraft", apiKey, providerSpecificData }),
+    topaz: ({ apiKey, providerSpecificData }: any) =>
+      validateImageProviderApiKey({ provider: "topaz", apiKey, providerSpecificData }),
     elevenlabs: validateElevenLabsProvider,
     inworld: validateInworldProvider,
     "aws-polly": validateAwsPollyProvider,
@@ -2763,6 +2878,7 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     snowflake: validateSnowflakeProvider,
     gigachat: validateGigachatProvider,
     "grok-web": validateGrokWebProvider,
+    "chatgpt-web": validateChatGptWebProvider,
     "perplexity-web": validatePerplexityWebProvider,
     "blackbox-web": validateBlackboxWebProvider,
     "muse-spark-web": validateMuseSparkWebProvider,
@@ -2845,6 +2961,33 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
           return { valid: false, error: "Invalid API key" };
         }
         // Any non-auth response (200, 400, 422) means auth passed
+        return { valid: true, error: null };
+      } catch (error: any) {
+        return toValidationErrorResult(error);
+      }
+    },
+    // Xiaomi MiMo — Token Plan keys (tp-*) only work on regional endpoints
+    // (e.g. token-plan-sgp, token-plan-ams), not api.xiaomimimo.com.
+    // /v1/models works but validate via chat/completions for stronger auth check.
+    "xiaomi-mimo": async ({ apiKey, providerSpecificData }: any) => {
+      try {
+        const baseUrl = normalizeBaseUrl(
+          providerSpecificData?.baseUrl || "https://api.xiaomimimo.com/v1"
+        );
+        const chatUrl = `${baseUrl.replace(/\/chat\/completions$/, "")}/chat/completions`;
+        const res = await validationWrite(chatUrl, {
+          method: "POST",
+          headers: buildBearerHeaders(apiKey, providerSpecificData),
+          body: JSON.stringify({
+            model: "mimo-v2.5-pro",
+            messages: [{ role: "user", content: "test" }],
+            max_tokens: 1,
+          }),
+        });
+        if (res.status === 401 || res.status === 403) {
+          return { valid: false, error: "Invalid API key" };
+        }
+        // Any non-auth response (200, 400, 422, 429) means auth passed
         return { valid: true, error: null };
       } catch (error: any) {
         return toValidationErrorResult(error);

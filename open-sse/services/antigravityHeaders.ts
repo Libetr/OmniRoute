@@ -19,8 +19,9 @@ const ANTIGRAVITY_VERSION = ANTIGRAVITY_FALLBACK_VERSION;
 export const GEMINI_CLI_VERSION = "0.39.1";
 export const GEMINI_SDK_VERSION = "1.30.0";
 export const NODE_VERSION = "v22.21.1";
-const LOAD_CODE_ASSIST_USER_AGENT = "google-api-nodejs-client/10.3.0";
-const LOAD_CODE_ASSIST_API_CLIENT = "google-cloud-sdk vscode_cloudshelleditor/0.1";
+export const ANTIGRAVITY_LOAD_CODE_ASSIST_USER_AGENT = "google-api-nodejs-client/10.3.0";
+export const ANTIGRAVITY_LOAD_CODE_ASSIST_API_CLIENT =
+  "google-cloud-sdk vscode_cloudshelleditor/0.1";
 const LOAD_CODE_ASSIST_METADATA = Object.freeze({
   ideType: "IDE_UNSPECIFIED",
   platform: "PLATFORM_UNSPECIFIED",
@@ -97,8 +98,8 @@ export function getAntigravityHeaders(
       return withOptionalBearerAuth(
         {
           "Content-Type": "application/json",
-          "User-Agent": LOAD_CODE_ASSIST_USER_AGENT,
-          "X-Goog-Api-Client": LOAD_CODE_ASSIST_API_CLIENT,
+          "User-Agent": ANTIGRAVITY_LOAD_CODE_ASSIST_USER_AGENT,
+          "X-Goog-Api-Client": ANTIGRAVITY_LOAD_CODE_ASSIST_API_CLIENT,
           "Client-Metadata": getAntigravityLoadCodeAssistClientMetadata(),
         },
         accessToken
@@ -133,8 +134,4 @@ export function googApiClientHeader(): string {
   return `google-genai-sdk/${GEMINI_SDK_VERSION} gl-node/${NODE_VERSION}`;
 }
 
-export {
-  ANTIGRAVITY_VERSION,
-  LOAD_CODE_ASSIST_USER_AGENT as ANTIGRAVITY_LOAD_CODE_ASSIST_USER_AGENT,
-  LOAD_CODE_ASSIST_API_CLIENT as ANTIGRAVITY_LOAD_CODE_ASSIST_API_CLIENT,
-};
+export { ANTIGRAVITY_VERSION };

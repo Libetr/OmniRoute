@@ -33,12 +33,33 @@ function resolveMigrationsDir(): string {
   try {
     return path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations");
   } catch {
-    // Fall through to a more defensive URL parse below.
+    // Fall through to more defensive URL parsing below.
   }
 
+  // Fix #1704: On Windows with global npm installs, import.meta.url may contain
+  // CI build-time paths (e.g., /home/runner/work/...) that are not valid file://
+  // URLs on Windows. Extract the path portion directly and normalize it.
   const metaUrl = import.meta.url;
   if (typeof metaUrl === "string" && metaUrl.startsWith("file://")) {
-    return path.join(path.dirname(fileURLToPath(metaUrl)), "migrations");
+    try {
+      // Strip the file:// prefix and decode, then normalize for the platform
+      const rawPath = decodeURIComponent(
+        metaUrl.replace(/^file:\/\/\//, "/").replace(/^file:\/\//, "")
+      );
+      return path.join(path.dirname(path.resolve(rawPath)), "migrations");
+    } catch {
+      // Fall through to process.cwd fallback
+    }
+  }
+
+  // Last resort: use process.cwd to find migrations relative to the app root
+  const cwdFallback = path.join(process.cwd(), "src", "lib", "db", "migrations");
+  if (fs.existsSync(cwdFallback)) {
+    return cwdFallback;
+  }
+  const appFallback = path.join(process.cwd(), "app", "src", "lib", "db", "migrations");
+  if (fs.existsSync(appFallback)) {
+    return appFallback;
   }
 
   throw new Error(
@@ -71,6 +92,21 @@ const RENAMED_MIGRATION_COMPATIBILITY = [
     toVersion: "029",
     toName: "provider_connection_max_concurrent",
   },
+  {
+    fromVersion: "032",
+    fromName: "create_reasoning_cache",
+    toVersion: "033",
+    toName: "create_reasoning_cache",
+  },
+] as const;
+
+const LEGACY_VERSION_SLOT_MIGRATIONS = [
+  { version: "028", name: "evals_tables" },
+  { version: "029", name: "webhooks_templates" },
+  { version: "030", name: "mcp_scopes_api_keys" },
+  { version: "031", name: "api_keys_expires" },
+  { version: "032", name: "detailed_logs_warnings" },
+  { version: "033", name: "provider_connections_block_extra_usage" },
 ] as const;
 
 const PHYSICAL_SCHEMA_SENTINELS = [
@@ -172,6 +208,25 @@ function ensureColumn(
   }
 }
 
+function isProviderConnectionMaxConcurrentMigration(migration: {
+  version: string;
+  name: string;
+}): boolean {
+  return migration.version === "029";
+}
+
+function applyProviderConnectionMaxConcurrentMigration(db: Database.Database): void {
+  ensureColumn(
+    db,
+    "provider_connections",
+    "max_concurrent",
+    "ALTER TABLE provider_connections ADD COLUMN max_concurrent INTEGER"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_pc_max_concurrent ON provider_connections(provider, max_concurrent)"
+  );
+}
+
 function isApiKeyLifecycleMigration(migration: { version: string; name: string }): boolean {
   return migration.version === "032";
 }
@@ -188,6 +243,20 @@ function applyApiKeyLifecycleMigration(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_api_keys_revoked_at ON api_keys(revoked_at);
     CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at);
   `);
+}
+
+function isSearchRequestTypeMigration(migration: { version: string; name: string }): boolean {
+  return migration.version === "007";
+}
+
+function applySearchRequestTypeMigration(db: Database.Database): void {
+  ensureColumn(
+    db,
+    "call_logs",
+    "request_type",
+    "ALTER TABLE call_logs ADD COLUMN request_type TEXT DEFAULT NULL"
+  );
+  db.exec("CREATE INDEX IF NOT EXISTS idx_call_logs_request_type ON call_logs(request_type);");
 }
 
 function inferPhysicalSchemaBaseline(db: Database.Database): {
@@ -327,6 +396,58 @@ function reconcileRenumberedMigrations(
   return repaired;
 }
 
+function rehomeLegacyVersionSlotMigrations(
+  db: Database.Database,
+  files: Array<{ version: string; name: string; path: string }>
+): boolean {
+  let repaired = false;
+  const diskNamesByVersion = new Map(files.map((file) => [file.version, file.name]));
+
+  for (const legacy of LEGACY_VERSION_SLOT_MIGRATIONS) {
+    const diskName = diskNamesByVersion.get(legacy.version);
+    if (!diskName || diskName === legacy.name) {
+      continue;
+    }
+
+    const legacyRow = db
+      .prepare("SELECT version, name FROM _omniroute_migrations WHERE version = ? AND name = ?")
+      .get(legacy.version, legacy.name) as { version: string; name: string } | undefined;
+    if (!legacyRow) {
+      continue;
+    }
+
+    const legacyVersion = `legacy-${legacy.version}-${legacy.name}`;
+    const applyRepair = db.transaction(() => {
+      const existingLegacyRow = db
+        .prepare("SELECT version FROM _omniroute_migrations WHERE version = ?")
+        .get(legacyVersion) as { version: string } | undefined;
+
+      if (existingLegacyRow) {
+        db.prepare("DELETE FROM _omniroute_migrations WHERE version = ? AND name = ?").run(
+          legacy.version,
+          legacy.name
+        );
+        return;
+      }
+
+      db.prepare("UPDATE _omniroute_migrations SET version = ? WHERE version = ? AND name = ?").run(
+        legacyVersion,
+        legacy.version,
+        legacy.name
+      );
+    });
+
+    applyRepair();
+    repaired = true;
+    console.warn(
+      `[Migration] Rehomed legacy migration ${legacy.version}_${legacy.name} ` +
+        `to ${legacyVersion} so current ${legacy.version}_${diskName} can apply.`
+    );
+  }
+
+  return repaired;
+}
+
 /**
  * Create a pre-migration backup of the SQLite database using VACUUM INTO.
  * Returns the backup path on success, null on failure.
@@ -369,6 +490,7 @@ export function runMigrations(db: Database.Database, options?: { isNewDb?: boole
   ensureMigrationsTable(db);
 
   const files = getMigrationFiles();
+  rehomeLegacyVersionSlotMigrations(db, files);
   reconcileRenumberedMigrations(db, files);
   const applied = getAppliedVersions(db);
   const appliedRecords = getAppliedRecords(db);
@@ -454,8 +576,12 @@ export function runMigrations(db: Database.Database, options?: { isNewDb?: boole
 
   for (const migration of pending) {
     const applyMigration = db.transaction(() => {
-      if (isApiKeyLifecycleMigration(migration)) {
+      if (isProviderConnectionMaxConcurrentMigration(migration)) {
+        applyProviderConnectionMaxConcurrentMigration(db);
+      } else if (isApiKeyLifecycleMigration(migration)) {
         applyApiKeyLifecycleMigration(db);
+      } else if (isSearchRequestTypeMigration(migration)) {
+        applySearchRequestTypeMigration(db);
       } else {
         const sql = fs.readFileSync(migration.path, "utf-8");
         db.exec(sql);
